@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; base-uri 'none'; form-action 'none';">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Lector MD</title>
+<style>
+:root{
+  --bg:#EEF1F4; --paper:#FFFFFF; --ink:#16202A; --muted:#5A6978; --rule:#D5DCE3; --soft:#F4F6F8;
+  --accent:#0E6577; --accent-soft:#E3F0F3; --code-bg:#F1F4F7; --node:#E3F0F3; --node-border:#0E6577;
+  --note:#0E6577; --tip:#2C7A4B; --important:#6B4FBB; --warning:#9A5B00; --caution:#B3261E;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --serif:Charter,"Iowan Old Style","Palatino Linotype",Georgia,serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#0E1318; --paper:#151C23; --ink:#E3E8ED; --muted:#98A5B3; --rule:#2A3541; --soft:#1B242D;
+  --accent:#5CC4D6; --accent-soft:#16303A; --code-bg:#1B242D; --node:#16303A; --node-border:#5CC4D6;
+  --note:#5CC4D6; --tip:#6CCB92; --important:#B4A0F2; --warning:#E3A94A; --caution:#F28B82;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1318; --paper:#151C23; --ink:#E3E8ED; --muted:#98A5B3; --rule:#2A3541; --soft:#1B242D;
+    --accent:#5CC4D6; --accent-soft:#16303A; --code-bg:#1B242D; --node:#16303A; --node-border:#5CC4D6;
+    --note:#5CC4D6; --tip:#6CCB92; --important:#B4A0F2; --warning:#E3A94A; --caution:#F28B82;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;padding-top:48px;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Barra superior */
+.bar{position:fixed;inset:0 0 auto 0;height:48px;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 16px;background:var(--paper);border-bottom:1px solid var(--rule)}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.mark{flex:none;font:700 12px/1 var(--mono);letter-spacing:-.02em;padding:5px 6px;border:1.5px solid var(--accent);color:var(--accent);border-radius:3px}
+.fname{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-right{display:flex;align-items:center;gap:8px;flex:none}
+.stats{color:var(--muted);font-size:13px;margin-right:6px;white-space:nowrap}
+.stats .bad{color:var(--caution);font-weight:600}
+.btn,.seg button{background:transparent;border:1px solid var(--rule);border-radius:5px;padding:5px 11px;line-height:1.3}
+.btn:hover,.seg button:hover{background:var(--soft)}
+.btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--paper);font-weight:600}
+.btn.primary:hover{filter:brightness(1.08);background:var(--accent)}
+.seg{display:inline-flex}
+.seg button{border-radius:0}
+.seg button:first-child{border-radius:5px 0 0 5px}
+.seg button:last-child{border-radius:0 5px 5px 0;border-left:0}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);font-weight:600}
+.seg button[aria-pressed="true"] + button{border-left:1px solid var(--accent)}
+
+/* Estructura */
+.shell{display:grid;grid-template-columns:264px minmax(0,1fr);align-items:start}
+.shell.no-outline{grid-template-columns:minmax(0,1fr)}
+.shell.no-outline .outline{display:none}
+.outline{position:sticky;top:48px;max-height:calc(100vh - 48px);overflow:auto;padding:24px 12px 24px 20px}
+.outline-title{font-weight:600;color:var(--muted);margin:0 0 10px 8px;font-size:13px}
+#toc button{display:block;width:100%;text-align:left;background:none;border:0;border-left:2px solid transparent;padding:4px 8px;color:var(--muted);font-size:13px;line-height:1.35;border-radius:0 3px 3px 0}
+#toc button:hover{color:var(--ink);background:var(--soft)}
+#toc button.active{color:var(--ink);border-left-color:var(--accent);font-weight:600}
+#toc button.l2{padding-left:20px}
+#toc button.l3{padding-left:32px}
+#toc button.l4{padding-left:44px}
+.main{padding:28px 28px 80px;min-width:0}
+
+/* Hoja */
+.sheet{max-width:1040px;margin:0 auto;background:var(--paper);border:1px solid var(--rule);border-radius:3px;padding:48px 56px 56px}
+.doc{font:17px/1.68 var(--serif)}
+.doc > *{max-width:72ch}
+.doc > .tablewrap,.doc > .diagram,.doc > .codeblock,.doc > .callout,.doc > details,.doc > hr{max-width:none}
+.doc h1,.doc h2,.doc h3,.doc h4,.doc h5,.doc h6{font-family:var(--sans);line-height:1.25;letter-spacing:-.012em;margin:1.9em 0 .55em;scroll-margin-top:68px}
+.doc h1{font-size:2rem;margin-top:0;padding-bottom:.35em;border-bottom:1px solid var(--rule)}
+.doc h2{font-size:1.5rem;padding-bottom:.25em;border-bottom:1px solid var(--rule)}
+.doc h3{font-size:1.2rem}
+.doc h4{font-size:1.02rem}
+.doc h5,.doc h6{font-size:.92rem;color:var(--muted)}
+.doc p,.doc ul,.doc ol,.doc blockquote{margin:0 0 1.05em}
+.doc li{margin:.25em 0}
+.doc li > p{margin:.3em 0}
+.doc a{color:var(--accent);text-underline-offset:2px}
+.doc a.dead{color:var(--muted);cursor:not-allowed;text-decoration-style:dotted}
+.doc hr{border:0;border-top:1px solid var(--rule);margin:2em 0}
+.doc img{max-width:100%}
+.doc .blocked-img{display:inline-block;font:13px var(--sans);color:var(--muted);border:1px dashed var(--rule);padding:2px 8px;border-radius:3px}
+.doc blockquote{border-left:3px solid var(--accent);padding:.1em 0 .1em 1.1em;color:var(--muted)}
+.doc :not(pre) > code{font:.84em var(--mono);background:var(--code-bg);padding:.12em .38em;border-radius:3px}
+.doc input[type="checkbox"]{margin:0 .5em 0 -1.4em;accent-color:var(--accent)}
+.doc ul:has(> li > input[type="checkbox"]){list-style:none;padding-left:1.4em}
+.doc kbd{font:.8em var(--mono);border:1px solid var(--rule);border-bottom-width:2px;border-radius:3px;padding:.05em .4em}
+
+/* Tablas */
+.tablewrap{overflow:auto;max-height:72vh;border:1px solid var(--rule);border-radius:6px;margin:1.4em 0;background:var(--paper)}
+.doc table{border-collapse:separate;border-spacing:0;width:100%;font:14px/1.5 var(--sans);font-variant-numeric:tabular-nums}
+.doc th{position:sticky;top:0;z-index:1;background:var(--soft);text-align:left;font-weight:600;padding:9px 14px;border-bottom:1px solid var(--rule)}
+.doc td{padding:8px 14px;vertical-align:top;border-bottom:1px solid var(--rule);min-width:7ch}
+.doc tr:last-child td{border-bottom:0}
+.doc tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--soft) 55%,transparent)}
+.doc .nw{white-space:nowrap}
+.doc td code,.doc th code{font-size:.9em}
+.doc td p{margin:0}
+
+/* Código */
+.codeblock{position:relative;margin:1.3em 0;border:1px solid var(--rule);border-radius:6px;background:var(--code-bg)}
+.codeblock .lang{position:absolute;top:7px;left:12px;font:12px var(--sans);color:var(--muted)}
+.codeblock .copy{position:absolute;top:5px;right:6px;font:12px var(--sans);background:var(--paper);border:1px solid var(--rule);border-radius:4px;padding:2px 9px;color:var(--muted)}
+.codeblock .copy:hover{color:var(--ink)}
+.codeblock pre{margin:0;padding:30px 16px 14px;overflow:auto;font:13px/1.55 var(--mono);tab-size:2}
+.codeblock.nolang pre{padding-top:14px}
+
+/* Diagramas */
+.diagram{position:relative;margin:1.5em 0;padding:18px 18px 14px;border:1px solid var(--rule);border-radius:6px;background:var(--paper);text-align:center;overflow:auto;cursor:zoom-in}
+.diagram:hover{border-color:var(--accent)}
+.diagram svg{max-width:100%;height:auto}
+.diagram .hint{position:absolute;top:6px;right:10px;font:12px var(--sans);color:var(--muted);pointer-events:none}
+.diagram.pending{color:var(--muted);font:13px var(--sans);cursor:default;padding:24px}
+.diagram.err{cursor:default;text-align:left;border-color:var(--caution)}
+.diagram.err strong{color:var(--caution);font-family:var(--sans)}
+.diagram.err pre{margin:.8em 0 0;font:12.5px/1.5 var(--mono);white-space:pre-wrap;color:var(--muted)}
+.diagram.err p{margin:0;font:14px/1.5 var(--sans)}
+
+/* Avisos y metadatos */
+.callout{margin:1.3em 0;padding:12px 16px;border-left:4px solid var(--c,var(--note));background:var(--soft);border-radius:0 6px 6px 0;font:16px/1.6 var(--serif);color:var(--ink)}
+.callout .ctitle{font:600 14px var(--sans);color:var(--c,var(--note));margin-bottom:4px}
+.callout > :last-child{margin-bottom:0}
+.front{margin:0 0 2em;border:1px solid var(--rule);border-radius:6px;background:var(--soft);font:13px var(--sans)}
+.front summary{cursor:pointer;padding:8px 14px;color:var(--muted)}
+.front pre{margin:0;padding:4px 14px 12px;font:12.5px/1.55 var(--mono);overflow:auto}
+.doc details{margin:1.2em 0;border:1px solid var(--rule);border-radius:6px;padding:8px 14px}
+.doc summary{cursor:pointer;font-family:var(--sans);font-weight:600}
+
+/* Estado vacío */
+.empty{max-width:640px;margin:9vh auto 0;padding:0 8px}
+.empty h1{font:700 2rem/1.2 var(--sans);letter-spacing:-.02em;margin:0 0 .5em}
+.empty p{margin:0 0 1.4em;font:18px/1.6 var(--serif);color:var(--muted)}
+.empty .actions{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 1.2em}
+.empty .actions .btn{padding:9px 16px;font-size:15px}
+.empty .hint{font:14px/1.5 var(--sans);color:var(--muted);margin-bottom:2.2em}
+.empty .priv{font:14px/1.55 var(--sans);color:var(--ink);border-left:3px solid var(--accent);padding:2px 0 2px 14px;margin:0}
+.src{display:block;width:100%;max-width:1040px;min-height:calc(100vh - 140px);margin:0 auto;padding:24px 28px;background:var(--paper);color:var(--ink);border:1px solid var(--rule);border-radius:3px;font:13.5px/1.6 var(--mono);resize:vertical;tab-size:2}
+
+/* Soltar archivo, visor, aviso */
+.drop{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(2px)}
+.drop div{font:600 22px var(--sans);padding:40px 56px;border:2px dashed var(--accent);border-radius:8px;background:var(--paper)}
+.viewer{position:fixed;inset:0;z-index:50;background:var(--paper);display:flex;flex-direction:column}
+.vbar{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--rule)}
+.vbar .grow{flex:1;color:var(--muted);font-size:13px}
+.vport{flex:1;position:relative;overflow:hidden;cursor:grab;touch-action:none}
+.vport.drag{cursor:grabbing}
+#stage{position:absolute;left:0;top:0;transform-origin:0 0}
+#stage svg{display:block;max-width:none}
+.foot{max-width:1040px;margin:28px auto 0;text-align:center}
+.foot button{background:none;border:0;color:var(--muted);font-size:13px;text-decoration:underline;text-underline-offset:2px;padding:4px 8px}
+.foot button:hover{color:var(--ink)}
+.licbody{flex:1;overflow:auto;margin:0;padding:20px 28px 40px;font:12.5px/1.6 var(--mono);white-space:pre-wrap;color:var(--ink);tab-size:4}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:6px;font:14px var(--sans);opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .outline{display:none}
+  .sheet{padding:28px 20px 36px}
+  .main{padding:16px 10px 60px}
+  .stats{display:none}
+}
+@media print{
+  body{padding:0;background:#fff}
+  .bar,.outline,.drop,.viewer,.toast,.copy,.hint,.foot{display:none !important}
+  .shell{display:block}
+  .main{padding:0}
+  .sheet{border:0;padding:0;max-width:none;background:#fff;color:#000}
+  .tablewrap{max-height:none;overflow:visible}
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand"><span class="mark">MD</span><span id="fname" class="fname">Sin documento</span></div>
+  <div class="bar-right">
+    <span id="stats" class="stats"></span>
+    <button class="btn" id="btnOpen" type="button">Abrir archivo</button>
+    <button class="btn" id="btnPaste" type="button">Pegar</button>
+    <div class="seg" role="group" aria-label="Modo de lectura">
+      <button id="segView" type="button" aria-pressed="true">Vista</button>
+      <button id="segSrc" type="button" aria-pressed="false">Fuente</button>
+    </div>
+    <button class="btn" id="btnOutline" type="button" aria-pressed="true">Contenido</button>
+    <button class="btn" id="btnTheme" type="button">Tema: auto</button>
+  </div>
+</header>
+
+<input type="file" id="file" accept=".md,.markdown,.mdx,.txt,text/markdown,text/plain" hidden>
+
+<div class="shell" id="shell">
+  <aside class="outline" aria-label="Contenido del documento">
+    <div class="outline-title">Contenido</div>
+    <nav id="toc"></nav>
+  </aside>
+  <main class="main">
+    <section id="empty" class="empty">
+      <h1>Abre un documento Markdown</h1>
+      <p>Las tablas, los diagramas Mermaid y los bloques de código se muestran ya renderizados, listos para leer.</p>
+      <div class="actions">
+        <button class="btn primary" id="emptyOpen" type="button">Elegir archivo</button>
+        <button class="btn" id="emptyPaste" type="button">Pegar desde el portapapeles</button>
+      </div>
+      <div class="hint">También puedes arrastrar el archivo a esta ventana, o pegar con ⌘V / Ctrl+V.</div>
+      <p class="priv">Diseñado para que el contenido no salga de tu equipo: todo se procesa dentro de esta página y una política de seguridad (CSP) impide que el navegador haga solicitudes de red. Las imágenes externas no se cargan, y los enlaces solo se abren si haces clic.</p>
+    </section>
+    <article id="sheet" class="sheet" hidden>
+      <div id="front"></div>
+      <div id="doc" class="doc"></div>
+    </article>
+    <textarea id="src" class="src" spellcheck="false" hidden aria-label="Fuente Markdown" placeholder="Pega aquí el Markdown y cambia a Vista"></textarea>
+    <footer class="foot"><button id="btnLic" type="button">Licencias de terceros</button></footer>
+  </main>
+</div>
+
+<div id="drop" class="drop" hidden><div>Suelta el archivo para leerlo</div></div>
+
+<div id="viewer" class="viewer" hidden role="dialog" aria-label="Diagrama ampliado">
+  <div class="vbar">
+    <button class="btn" id="vOut" type="button" aria-label="Alejar">−</button>
+    <button class="btn" id="vIn" type="button" aria-label="Acercar">+</button>
+    <button class="btn" id="v100" type="button">100 %</button>
+    <button class="btn" id="vFit" type="button">Ajustar</button>
+    <span class="grow" id="vInfo">Rueda para acercar · arrastra para mover</span>
+    <button class="btn" id="vClose" type="button">Cerrar (Esc)</button>
+  </div>
+  <div class="vport" id="vport"><div id="stage"></div></div>
+</div>
+
+<div id="lic" class="viewer" hidden role="dialog" aria-label="Licencias de terceros">
+  <div class="vbar"><strong>Licencias de terceros</strong><span class="grow"></span><button class="btn" id="licClose" type="button">Cerrar (Esc)</button></div>
+  <pre class="licbody" id="licText" tabindex="0"></pre>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script type="text/plain" id="licenses">/*__LICENSES__*/</script>
+
+<script>/*__MARKED__*/</script>
+<script>/*__PURIFY__*/</script>
+<script>/*__MERMAID__*/</script>
+<script>
+(() => {
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const state = { md: '', name: '', mode: 'view', theme: 'auto', outline: true, token: 0 };
+const el = {
+  shell: $('#shell'), empty: $('#empty'), sheet: $('#sheet'), front: $('#front'), doc: $('#doc'),
+  src: $('#src'), toc: $('#toc'), fname: $('#fname'), stats: $('#stats'), file: $('#file'),
+  drop: $('#drop'), toast: $('#toast'), viewer: $('#viewer'), vport: $('#vport'), stage: $('#stage'),
+  segView: $('#segView'), segSrc: $('#segSrc'), btnTheme: $('#btnTheme'), btnOutline: $('#btnOutline')
+};
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let toastTimer, observer;
+
+function toast(msg) {
+  el.toast.textContent = msg; el.toast.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.toast.classList.remove('show'), 3200);
+}
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const slug = s => s.toLowerCase().trim().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s+/g, '-');
+
+/* ---------- Tema ---------- */
+const THEMES = ['auto', 'light', 'dark'];
+const THEME_LABEL = { auto: 'auto', light: 'claro', dark: 'oscuro' };
+function applyTheme() {
+  if (state.theme === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', state.theme);
+  el.btnTheme.textContent = 'Tema: ' + THEME_LABEL[state.theme];
+}
+try { const t = localStorage.getItem('mdreader-theme'); if (THEMES.includes(t)) state.theme = t; } catch (e) {}
+applyTheme();
+el.btnTheme.addEventListener('click', () => {
+  state.theme = THEMES[(THEMES.indexOf(state.theme) + 1) % THEMES.length];
+  try { localStorage.setItem('mdreader-theme', state.theme); } catch (e) {}
+  applyTheme(); if (state.md) render();
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (state.theme === 'auto' && state.md) render(); });
+
+/* ---------- Carga de contenido ---------- */
+function setMode(mode) {
+  state.mode = mode;
+  el.segView.setAttribute('aria-pressed', mode === 'view');
+  el.segSrc.setAttribute('aria-pressed', mode === 'src');
+  if (mode === 'src') {
+    el.src.value = state.md;
+    el.empty.hidden = true; el.sheet.hidden = true; el.src.hidden = false;
+    el.src.focus();
+  } else {
+    if (!el.src.hidden) state.md = el.src.value.replace(/\r\n/g, '\n');
+    el.src.hidden = true;
+    showState();
+    if (state.md) render();
+  }
+}
+function showState() {
+  const has = !!state.md.trim();
+  el.empty.hidden = has; el.sheet.hidden = !has;
+}
+function load(text, name) {
+  state.md = text.replace(/\r\n/g, '\n');
+  state.name = name || 'Texto pegado';
+  el.fname.textContent = state.name;
+  document.title = state.name + ' · Lector MD';
+  state.mode = 'view';
+  el.segView.setAttribute('aria-pressed', true); el.segSrc.setAttribute('aria-pressed', false);
+  el.src.hidden = true;
+  showState();
+  window.scrollTo(0, 0);
+  render();
+}
+async function loadFile(f) {
+  if (!f) return;
+  try { load(await f.text(), f.name); } catch (e) { toast('No se pudo leer el archivo'); }
+}
+$('#btnOpen').onclick = $('#emptyOpen').onclick = () => el.file.click();
+el.file.addEventListener('change', () => { loadFile(el.file.files[0]); el.file.value = ''; });
+async function pasteFromClipboard() {
+  try {
+    const t = await navigator.clipboard.readText();
+    if (t.trim()) load(t, 'Texto pegado'); else toast('El portapapeles está vacío');
+  } catch (e) { toast('El navegador no permitió leer el portapapeles. Usa ⌘V / Ctrl+V'); }
+}
+$('#btnPaste').onclick = $('#emptyPaste').onclick = pasteFromClipboard;
+document.addEventListener('paste', e => {
+  if (e.target.closest && e.target.closest('textarea,input')) return;
+  const t = e.clipboardData && e.clipboardData.getData('text/plain');
+  if (t && t.trim()) { e.preventDefault(); load(t, 'Texto pegado'); }
+});
+let dragDepth = 0;
+const hasFiles = e => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+addEventListener('dragenter', e => { if (hasFiles(e)) { e.preventDefault(); dragDepth++; el.drop.hidden = false; } });
+addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+addEventListener('dragleave', e => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; el.drop.hidden = true; } });
+addEventListener('drop', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; el.drop.hidden = true; loadFile(e.dataTransfer.files[0]);
+});
+el.segView.onclick = () => { if (state.mode !== 'view') setMode('view'); };
+el.segSrc.onclick = () => { if (state.mode !== 'src') setMode('src'); };
+el.btnOutline.onclick = () => {
+  state.outline = !state.outline;
+  el.btnOutline.setAttribute('aria-pressed', state.outline);
+  el.shell.classList.toggle('no-outline', !state.outline);
+};
+
+/* ---------- Render ---------- */
+const PURIFY = {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ['style', 'form', 'button', 'textarea', 'select', 'option', 'iframe', 'object', 'embed',
+    'video', 'audio', 'source', 'track', 'picture', 'link', 'meta', 'base'],
+  FORBID_ATTR: ['style', 'srcset', 'ping', 'poster', 'background']
+};
+// Defensa en profundidad (además de la CSP): ninguna imagen conserva una URL que pueda disparar una solicitud
+DOMPurify.addHook('afterSanitizeAttributes', node => {
+  if (node.tagName === 'IMG' && !/^data:image\//i.test(node.getAttribute('src') || '')) node.removeAttribute('src');
+});
+const CALLOUTS = {
+  NOTE: ['Nota', '--note'], TIP: ['Consejo', '--tip'], IMPORTANT: ['Importante', '--important'],
+  WARNING: ['Advertencia', '--warning'], CAUTION: ['Precaución', '--caution']
+};
+
+function mermaidConfig() {
+  return {
+    startOnLoad: false, securityLevel: 'strict', theme: 'base', maxTextSize: 500000,
+    suppressErrorRendering: true, fontFamily: cssVar('--sans'),
+    gantt: { useWidth: Math.max(600, el.doc.clientWidth - 40), fontSize: 13, sectionFontSize: 13, barHeight: 26, barGap: 6, leftPadding: 90 },
+    themeVariables: {
+      background: 'transparent', fontSize: '14px',
+      primaryColor: cssVar('--node'), primaryTextColor: cssVar('--ink'), primaryBorderColor: cssVar('--node-border'),
+      lineColor: cssVar('--muted'), secondaryColor: cssVar('--soft'), tertiaryColor: cssVar('--paper'),
+      noteBkgColor: cssVar('--soft'), noteTextColor: cssVar('--ink')
+    }
+  };
+}
+
+function splitFrontmatter(md) {
+  const m = md.match(/^---\n([\s\S]*?)\n---[ \t]*(?:\n|$)/);
+  return m ? { front: m[1], body: md.slice(m[0].length) } : { front: '', body: md };
+}
+
+function postprocess() {
+  const root = el.doc;
+
+  // Código y diagramas
+  root.querySelectorAll('pre > code').forEach(code => {
+    const pre = code.parentElement;
+    const lang = ((code.className.match(/language-([\w+-]+)/) || [])[1] || '').toLowerCase();
+    if (lang === 'mermaid') {
+      const fig = document.createElement('div');
+      fig.className = 'diagram pending';
+      fig.textContent = 'Renderizando diagrama…';
+      fig.dataset.src = code.textContent;
+      pre.replaceWith(fig);
+      return;
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'codeblock' + (lang ? '' : ' nolang');
+    if (lang) { const l = document.createElement('span'); l.className = 'lang'; l.textContent = lang; wrap.append(l); }
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'copy'; b.textContent = 'Copiar';
+    b.addEventListener('click', () => copyText(code.textContent).then(() => { b.textContent = 'Copiado'; setTimeout(() => b.textContent = 'Copiar', 1400); }));
+    pre.replaceWith(wrap); wrap.append(b, pre);
+  });
+
+  // Tablas
+  root.querySelectorAll('table').forEach(t => {
+    const w = document.createElement('div'); w.className = 'tablewrap'; w.tabIndex = 0;
+    t.querySelectorAll('th,td').forEach(c => { if (c.textContent.trim().length <= 28 && !c.querySelector('br')) c.classList.add('nw'); });
+    t.replaceWith(w); w.append(t);
+  });
+
+  // Avisos estilo GitHub (> [!NOTE])
+  root.querySelectorAll('blockquote').forEach(bq => {
+    const p = bq.firstElementChild;
+    const m = p && p.tagName === 'P' && p.textContent.trim().match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/i);
+    if (!m) return;
+    const [label, cssv] = CALLOUTS[m[1].toUpperCase()];
+    const box = document.createElement('div');
+    box.className = 'callout'; box.style.setProperty('--c', `var(${cssv})`);
+    const title = document.createElement('div'); title.className = 'ctitle'; title.textContent = label;
+    const first = p.firstChild;
+    if (first && first.nodeType === 3) first.textContent = first.textContent.replace(/^\s*\[![A-Za-z]+\]\s*/, '');
+    box.append(title, ...bq.childNodes);
+    bq.replaceWith(box);
+  });
+
+  // Imágenes: solo data:, el resto se bloquea
+  root.querySelectorAll('img').forEach(img => {
+    const s = img.getAttribute('src') || '';
+    if (/^data:image\//i.test(s)) return;
+    const ph = document.createElement('span'); ph.className = 'blocked-img';
+    ph.textContent = 'Imagen no cargada' + (img.alt ? ': ' + img.alt : '');
+    ph.title = 'Las imágenes externas o relativas no se cargan en este lector';
+    img.replaceWith(ph);
+  });
+
+  // Enlaces
+  root.querySelectorAll('a[href]').forEach(a => {
+    const h = a.getAttribute('href');
+    if (h.startsWith('#')) return;
+    if (/^(https?:|mailto:)/i.test(h)) { a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = h; return; }
+    a.classList.add('dead'); a.title = 'Enlace relativo: ' + h;
+    a.addEventListener('click', e => { e.preventDefault(); toast('Enlace relativo, no disponible en este lector'); });
+  });
+
+  // Ids de encabezados
+  const seen = new Map();
+  root.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
+    const base = slug(h.textContent) || 'seccion';
+    const n = seen.get(base) || 0; seen.set(base, n + 1);
+    h.id = n ? `${base}-${n}` : base;
+  });
+}
+
+function buildOutline() {
+  el.toc.textContent = '';
+  if (observer) observer.disconnect();
+  const hs = [...el.doc.querySelectorAll('h1,h2,h3,h4')];
+  if (!hs.length) { el.toc.innerHTML = ''; return; }
+  const minLvl = Math.min(...hs.map(h => +h.tagName[1]));
+  const items = new Map();
+  hs.forEach(h => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = h.textContent;
+    b.className = 'l' + (+h.tagName[1] - minLvl + 1);
+    b.addEventListener('click', () => {
+      h.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+      history.replaceState(null, '', '#' + h.id);
+    });
+    el.toc.append(b); items.set(h, b);
+  });
+  observer = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if (!en.isIntersecting) return;
+      items.forEach(b => b.classList.remove('active'));
+      const b = items.get(en.target); b.classList.add('active');
+      b.scrollIntoView({ block: 'nearest' });
+    });
+  }, { rootMargin: '-60px 0px -75% 0px' });
+  hs.forEach(h => observer.observe(h));
+}
+
+async function renderDiagrams(token) {
+  const figs = [...el.doc.querySelectorAll('.diagram.pending')];
+  let ok = 0, bad = 0, i = 0;
+  if (figs.length) mermaid.initialize(mermaidConfig());
+  for (const fig of figs) {
+    if (token !== state.token) return null;
+    const id = `mmd${token}x${i++}`;
+    const src = fig.dataset.src;
+    try {
+      const { svg } = await mermaid.render(id, src);
+      if (token !== state.token) return null;
+      fig.className = 'diagram';
+      fig.innerHTML = svg;
+      const hint = document.createElement('span'); hint.className = 'hint'; hint.textContent = 'Clic para ampliar';
+      fig.append(hint);
+      fig.tabIndex = 0; fig.setAttribute('role', 'button'); fig.setAttribute('aria-label', 'Ampliar diagrama');
+      const open = () => openViewer(fig.querySelector('svg'));
+      fig.addEventListener('click', open);
+      fig.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      ok++;
+    } catch (err) {
+      const stray = document.getElementById('d' + id); if (stray) stray.remove();
+      fig.className = 'diagram err'; fig.textContent = '';
+      const p = document.createElement('p');
+      const s = document.createElement('strong'); s.textContent = 'Diagrama no válido.';
+      p.append(s);
+      const msg = document.createElement('pre');
+      msg.textContent = String((err && (err.message || err.str)) || err).split('\n').slice(0, 8).join('\n');
+      const det = document.createElement('details');
+      const sum = document.createElement('summary'); sum.textContent = 'Ver código del diagrama';
+      const pre = document.createElement('pre'); pre.textContent = src;
+      det.append(sum, pre);
+      fig.append(p, msg, det);
+      bad++;
+    }
+  }
+  return { ok, bad };
+}
+
+function renderStats(d) {
+  const tables = el.doc.querySelectorAll('table').length;
+  const parts = [];
+  if (tables) parts.push(`${tables} ${tables === 1 ? 'tabla' : 'tablas'}`);
+  if (d && (d.ok || d.bad)) parts.push(`${d.ok + d.bad} ${d.ok + d.bad === 1 ? 'diagrama' : 'diagramas'}`);
+  el.stats.textContent = parts.join(' · ');
+  if (d && d.bad) {
+    const b = document.createElement('span'); b.className = 'bad';
+    b.textContent = ` (${d.bad} con error)`; el.stats.append(b);
+  }
+}
+
+async function render() {
+  const token = ++state.token;
+  const y = window.scrollY;
+  const { front, body } = splitFrontmatter(state.md);
+  const raw = marked.parse(body, { gfm: true });
+  el.doc.innerHTML = DOMPurify.sanitize(raw, PURIFY);
+  el.front.textContent = '';
+  if (front.trim()) {
+    const d = document.createElement('details'); d.className = 'front';
+    const s = document.createElement('summary'); s.textContent = 'Metadatos del documento';
+    const p = document.createElement('pre'); p.textContent = front;
+    d.append(s, p); el.front.append(d);
+  }
+  postprocess();
+  buildOutline();
+  renderStats(null);
+  const d = await renderDiagrams(token);
+  if (token !== state.token) return;
+  renderStats(d);
+  if (y) window.scrollTo(0, y);
+  if (location.hash && !y) { const t = document.getElementById(decodeURIComponent(location.hash.slice(1))); if (t) t.scrollIntoView(); }
+}
+
+function copyText(t) {
+  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t).catch(() => legacyCopy(t));
+  return legacyCopy(t);
+}
+function legacyCopy(t) {
+  const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.append(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  ta.remove(); return Promise.resolve();
+}
+
+/* ---------- Visor de diagramas ---------- */
+const V = { s: 1, x: 0, y: 0, w: 0, h: 0, drag: null };
+function vApply() {
+  el.stage.style.transform = `translate(${V.x}px,${V.y}px) scale(${V.s})`;
+  $('#vInfo').textContent = `${Math.round(V.s * 100)} % · rueda para acercar · arrastra para mover`;
+}
+function vZoomAt(factor, cx, cy) {
+  const ns = Math.min(10, Math.max(0.05, V.s * factor)), k = ns / V.s;
+  V.x = cx - (cx - V.x) * k; V.y = cy - (cy - V.y) * k; V.s = ns; vApply();
+}
+function vFit() {
+  const r = el.vport.getBoundingClientRect();
+  V.s = Math.min(r.width / V.w, r.height / V.h, 2) * 0.94;
+  V.x = (r.width - V.w * V.s) / 2; V.y = (r.height - V.h * V.s) / 2; vApply();
+}
+function openViewer(svg) {
+  if (!svg) return;
+  const c = svg.cloneNode(true);
+  const vb = (c.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+  const rect = svg.getBoundingClientRect();
+  V.w = vb[2] || rect.width; V.h = vb[3] || rect.height;
+  c.removeAttribute('style'); c.setAttribute('width', V.w); c.setAttribute('height', V.h);
+  el.stage.textContent = ''; el.stage.append(c);
+  el.viewer.hidden = false; document.body.style.overflow = 'hidden';
+  vFit(); $('#vClose').focus();
+}
+function closeViewer() { el.viewer.hidden = true; document.body.style.overflow = ''; el.stage.textContent = ''; }
+$('#vClose').onclick = closeViewer;
+$('#vIn').onclick = () => { const r = el.vport.getBoundingClientRect(); vZoomAt(1.25, r.width / 2, r.height / 2); };
+$('#vOut').onclick = () => { const r = el.vport.getBoundingClientRect(); vZoomAt(0.8, r.width / 2, r.height / 2); };
+$('#v100').onclick = () => { const r = el.vport.getBoundingClientRect(); vZoomAt(1 / V.s, r.width / 2, r.height / 2); };
+$('#vFit').onclick = vFit;
+el.vport.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = el.vport.getBoundingClientRect();
+  vZoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), e.clientX - r.left, e.clientY - r.top);
+}, { passive: false });
+el.vport.addEventListener('pointerdown', e => {
+  V.drag = { x: e.clientX - V.x, y: e.clientY - V.y }; el.vport.classList.add('drag'); el.vport.setPointerCapture(e.pointerId);
+});
+el.vport.addEventListener('pointermove', e => { if (V.drag) { V.x = e.clientX - V.drag.x; V.y = e.clientY - V.drag.y; vApply(); } });
+const endDrag = () => { V.drag = null; el.vport.classList.remove('drag'); };
+el.vport.addEventListener('pointerup', endDrag); el.vport.addEventListener('pointercancel', endDrag);
+const lic = $('#lic');
+$('#btnLic').addEventListener('click', () => {
+  $('#licText').textContent = $('#licenses').textContent.trim();
+  lic.hidden = false; document.body.style.overflow = 'hidden'; $('#licClose').focus();
+});
+function closeLic() { lic.hidden = true; document.body.style.overflow = ''; $('#btnLic').focus(); }
+$('#licClose').onclick = closeLic;
+addEventListener('keydown', e => {
+  if (!lic.hidden) { if (e.key === 'Escape') closeLic(); return; }
+  if (el.viewer.hidden) return;
+  if (e.key === 'Escape') closeViewer();
+  else if (e.key === '+' || e.key === '=') $('#vIn').click();
+  else if (e.key === '-') $('#vOut').click();
+  else if (e.key === '0') vFit();
+});
+addEventListener('resize', () => { if (!el.viewer.hidden) vFit(); });
+
+showState();
+})();
+</script>
+</body>
+</html>

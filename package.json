@@ -1,0 +1,21 @@
+{
+  "name": "lector-md",
+  "version": "1.0.0",
+  "description": "Lector de Markdown 100 % local: tablas, diagramas Mermaid y código en un solo archivo HTML, sin conexión a red.",
+  "private": true,
+  "license": "MIT",
+  "author": "Erick Miranda Márquez",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node test/smoke.js",
+    "licenses": "node scripts/gen-licenses.js"
+  },
+  "dependencies": {
+    "dompurify": "3.4.16",
+    "marked": "18.0.14",
+    "mermaid": "11.17.2"
+  },
+  "devDependencies": {
+    "playwright": "1.56.0"
+  }
+}
